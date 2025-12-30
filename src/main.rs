@@ -1,7 +1,14 @@
 use windows::{
-    Win32::Foundation::*, Win32::Graphics::Gdi::ValidateRect,
-    Win32::System::LibraryLoader::GetModuleHandleA, Win32::UI::WindowsAndMessaging::*, core::*,
+    Win32::Foundation::*,
+    Win32::Graphics::Gdi::{
+        BeginPaint, DT_CENTER, DT_SINGLELINE, DT_VCENTER, DrawTextW, EndPaint, PAINTSTRUCT,
+        SetBkMode, TRANSPARENT,
+    },
+    Win32::System::LibraryLoader::GetModuleHandleA,
+    Win32::UI::WindowsAndMessaging::*,
+    core::*,
 };
+mod utils;
 
 // use tray_icon::{
 //     Icon, TrayIconBuilder, TrayIconEvent,
@@ -33,8 +40,8 @@ fn main() -> windows::core::Result<()> {
             WS_OVERLAPPEDWINDOW | WS_VISIBLE,
             CW_USEDEFAULT,
             CW_USEDEFAULT,
-            CW_USEDEFAULT,
-            CW_USEDEFAULT,
+            500,
+            500,
             None,
             None,
             None,
@@ -83,8 +90,23 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
     unsafe {
         match message {
             WM_PAINT => {
-                println!("WM_PAINT");
-                _ = ValidateRect(Some(window), None);
+                // BeginPaint / DrawText で中央に "Hello" を表示
+                let mut ps = PAINTSTRUCT::default();
+                let hdc = BeginPaint(window, &mut ps);
+                SetBkMode(hdc, TRANSPARENT);
+                let mut rect = RECT::default();
+                let _ = GetClientRect(window, &mut rect);
+                // Wide文字列を使って中央に「こんにちは」を表示
+                let text = "こんにちは";
+                let mut text_wide: Vec<u16> = text.encode_utf16().collect();
+                DrawTextW(
+                    hdc,
+                    &mut text_wide,
+                    &mut rect,
+                    DT_CENTER | DT_VCENTER | DT_SINGLELINE,
+                );
+
+                let _ = EndPaint(window, &ps);
                 LRESULT(0)
             }
             WM_DESTROY => {
