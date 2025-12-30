@@ -103,6 +103,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "cfg_aliases"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "613afe47fcd5fac7ccf1db93babcb082c5994d996f20b8b159f2ad1658eb5724"
+
+[[package]]
 name = "crc32fast"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -125,6 +131,17 @@ name = "crossbeam-utils"
 version = "0.8.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
+
+[[package]]
+name = "ctrlc"
+version = "3.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73736a89c4aff73035ba2ed2e565061954da00d4970fc9ac25dcc85a2a20d790"
+dependencies = [
+ "dispatch2",
+ "nix",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "dirs"
@@ -154,6 +171,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89a09f22a6c6069a18470eb92d2298acf25463f14256d24778e1230d789a2aec"
 dependencies = [
  "bitflags 2.10.0",
+ "block2",
+ "libc",
  "objc2",
 ]
 
@@ -494,6 +513,7 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 name = "ime-indicator-rs"
 version = "0.1.0"
 dependencies = [
+ "ctrlc",
  "tray-icon",
  "windows",
  "windows-strings",
@@ -639,6 +659,18 @@ dependencies = [
  "png",
  "thiserror 2.0.17",
  "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "nix"
+version = "0.30.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74523f3a35e05aba87a1d978330aef40f67b0304ac79c1c00b294c9830543db6"
+dependencies = [
+ "bitflags 2.10.0",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
 ]
 
 [[package]]

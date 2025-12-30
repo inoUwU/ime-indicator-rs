@@ -6,6 +6,7 @@ use windows::{
         DrawTextW, EndPaint, FillRect, InvalidateRect, PAINTSTRUCT, SetBkMode, TRANSPARENT,
     },
     Win32::System::LibraryLoader::GetModuleHandleA,
+    Win32::UI::Accessibility::*,
     Win32::UI::Input::Ime::*,
     Win32::UI::WindowsAndMessaging::*,
     core::*,
@@ -14,6 +15,8 @@ use windows::{
 // 安全なグローバル状態管理
 static WINDOW_HANDLE: OnceLock<isize> = OnceLock::new(); // HWNDをisizeとして保存
 static IME_STATE: OnceLock<Arc<Mutex<ImeState>>> = OnceLock::new();
+static KEYBOARD_HOOK: OnceLock<isize> = OnceLock::new(); // HHOOKをisizeとして保存
+static EVENT_HOOK: OnceLock<isize> = OnceLock::new(); // HWINEVENTHOOKをisizeとして保存
 
 // IME状態を管理する構造体
 #[derive(Debug, Clone)]
@@ -25,6 +28,84 @@ struct ImeState {
 
 const WM_IME_STATUS_CHANGED: u32 = WM_USER + 1;
 const IMC_GETOPENSTATUS: u32 = 5;
+
+// Low-Level Keyboard Hook Procedure
+extern "system" fn low_level_keyboard_proc(
+    n_code: i32,
+    w_param: WPARAM,
+    l_param: LPARAM,
+) -> LRESULT {
+    unsafe {
+        if n_code >= 0 {
+            // キーボード入力があったときにIME状態をチェック
+            if let Some(&window_handle_raw) = WINDOW_HANDLE.get() {
+                let window_handle = HWND(window_handle_raw as *mut _);
+                check_ime_status_and_update(window_handle);
+            }
+        }
+        // 次のフックプロシージャにチェーンする
+        CallNextHookEx(None, n_code, w_param, l_param)
+    }
+}
+
+// Window Event Hook Procedure
+extern "system" fn win_event_proc(
+    _h_win_event_hook: HWINEVENTHOOK,
+    event: u32,
+    _hwnd: HWND,
+    _id_object: i32,
+    _id_child: i32,
+    _dw_event_thread: u32,
+    _dw_ms_event_time: u32,
+) {
+    // フォーカス変更やウィンドウ状態変更の際にIME状態をチェック
+    match event {
+        EVENT_OBJECT_FOCUS | EVENT_SYSTEM_FOREGROUND => {
+            if let Some(&window_handle_raw) = WINDOW_HANDLE.get() {
+                let window_handle = HWND(window_handle_raw as *mut _);
+                check_ime_status_and_update(window_handle);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// 現在のIME状態を取得する
+fn get_current_ime_status() -> bool {
+    unsafe {
+        let foreground_window = GetForegroundWindow();
+        if foreground_window.is_invalid() {
+            return false;
+        }
+
+        // IMEコンテキストを取得
+        let ime_context = ImmGetDefaultIMEWnd(foreground_window);
+
+        if !ime_context.is_invalid() {
+            // IMEのオープン状態を取得
+            let ime_open = SendMessageA(
+                ime_context,
+                WM_IME_CONTROL,
+                WPARAM(IMC_GETOPENSTATUS as usize),
+                LPARAM(0),
+            );
+            return ime_open.0 != 0;
+        } else {
+            // フォールバック：直接InputContextから取得を試みる
+            let thread_id = GetWindowThreadProcessId(foreground_window, None);
+            if thread_id != 0 {
+                let himc = ImmGetContext(foreground_window);
+                if !himc.is_invalid() {
+                    let is_active = ImmGetOpenStatus(himc).as_bool();
+                    let _ = ImmReleaseContext(foreground_window, himc);
+                    return is_active;
+                }
+            }
+        }
+
+        false
+    }
+}
 
 extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe {
@@ -89,6 +170,7 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
             }
             WM_DESTROY => {
                 println!("WM_DESTROY");
+                cleanup_hooks(); // フックを解除
                 PostQuitMessage(0);
                 LRESULT(0)
             }
@@ -143,10 +225,23 @@ pub fn create_overlay_window() -> windows::core::Result<HWND> {
         // グローバル変数にウィンドウハンドルを保存
         let _ = WINDOW_HANDLE.set(hwnd.0 as isize);
 
-        // IME状態を初期化
+        // 現在の実際のIME状態を取得して初期化
+        let current_ime_status = get_current_ime_status();
+        let initial_description = if current_ime_status { "あ" } else { "A" };
+
+        println!(
+            "Initial IME status: {} ({})",
+            if current_ime_status {
+                "Active"
+            } else {
+                "Inactive"
+            },
+            initial_description
+        );
+
         let _ = IME_STATE.set(Arc::new(Mutex::new(ImeState {
-            is_active: false,
-            mode_description: "A".to_string(),
+            is_active: current_ime_status,
+            mode_description: initial_description.to_string(),
             should_show: false,
         })));
 
@@ -154,21 +249,95 @@ pub fn create_overlay_window() -> windows::core::Result<HWND> {
     }
 }
 
-/// IME監視タイマーを設定します（より安全な方式）
+/// グローバルIMEフックを設定します
 pub fn setup_ime_hook(_window_handle: HWND, _display_duration: u32) -> windows::core::Result<()> {
     unsafe {
-        // タイマーを使用してIME状態を定期的にチェック（100ms間隔）
-        if let Some(&window_handle_raw) = WINDOW_HANDLE.get() {
-            let window_handle = HWND(window_handle_raw as *mut _);
-            SetTimer(Some(window_handle), 999, 100, None); // ID=999でIME監視タイマー
+        println!("Setting up global IME hook...");
+
+        let instance = GetModuleHandleA(None)?;
+        println!("Got module handle: {:?}", instance);
+
+        // Low-Level Keyboard Hookを設定
+        println!("Setting up keyboard hook...");
+        let keyboard_hook = SetWindowsHookExA(
+            WH_KEYBOARD_LL,
+            Some(low_level_keyboard_proc),
+            Some(instance.into()),
+            0,
+        );
+
+        match keyboard_hook {
+            Ok(hook) => {
+                println!("Keyboard hook established successfully: {:?}", hook);
+                let _ = KEYBOARD_HOOK.set(hook.0 as isize);
+            }
+            Err(e) => {
+                println!("Failed to set keyboard hook: {:?}", e);
+                return Err(e);
+            }
         }
 
-        println!("IME monitoring timer started successfully");
+        // Window Event Hookを設定（フォーカス変更を監視）
+        println!("Setting up window event hook...");
+        let event_hook = SetWinEventHook(
+            EVENT_OBJECT_FOCUS,
+            EVENT_SYSTEM_FOREGROUND,
+            Some(instance),
+            Some(win_event_proc),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT,
+        );
+
+        if event_hook.is_invalid() {
+            println!("Failed to set window event hook");
+            // Window Event Hookの失敗は重要ではないので続行
+        } else {
+            println!(
+                "Window event hook established successfully: {:?}",
+                event_hook
+            );
+            let _ = EVENT_HOOK.set(event_hook.0 as isize);
+        }
+
+        // バックアップとして軽量なタイマーも設定（5秒間隔）
+        if let Some(&window_handle_raw) = WINDOW_HANDLE.get() {
+            let window_handle = HWND(window_handle_raw as *mut _);
+            SetTimer(Some(window_handle), 999, 5000, None); // バックアップタイマー：5秒間隔
+            println!("Backup timer set successfully");
+        }
+
+        println!("Global IME hook established successfully");
+
+        // 初期状態を確認して表示が必要ならオーバーレイを表示
+        if let Some(&window_handle_raw) = WINDOW_HANDLE.get() {
+            let window_handle = HWND(window_handle_raw as *mut _);
+            // 初期状態を表示（3秒間）
+            show_overlay_window(window_handle);
+        }
+
         Ok(())
     }
 }
 
-/// IME状態をチェックして更新する
+/// フックを解除します
+pub fn cleanup_hooks() {
+    unsafe {
+        if let Some(&keyboard_hook_raw) = KEYBOARD_HOOK.get() {
+            let keyboard_hook = HHOOK(keyboard_hook_raw as *mut _);
+            let _ = UnhookWindowsHookEx(keyboard_hook);
+        }
+
+        if let Some(&event_hook_raw) = EVENT_HOOK.get() {
+            let event_hook = HWINEVENTHOOK(event_hook_raw as *mut _);
+            let _ = UnhookWinEvent(event_hook);
+        }
+
+        println!("Hooks cleaned up");
+    }
+}
+
+/// IME状態をチェックして更新する（グローバルフック対応版）
 fn check_ime_status_and_update(window_handle: HWND) {
     unsafe {
         let foreground_window = GetForegroundWindow();
@@ -176,8 +345,9 @@ fn check_ime_status_and_update(window_handle: HWND) {
             return;
         }
 
-        let _thread_id = GetWindowThreadProcessId(foreground_window, None);
+        // IMEコンテキストを取得
         let ime_context = ImmGetDefaultIMEWnd(foreground_window);
+        let mut is_ime_active = false;
 
         if !ime_context.is_invalid() {
             // IMEのオープン状態を取得
@@ -187,29 +357,49 @@ fn check_ime_status_and_update(window_handle: HWND) {
                 WPARAM(IMC_GETOPENSTATUS as usize),
                 LPARAM(0),
             );
-            let is_ime_active = ime_open.0 != 0;
+            is_ime_active = ime_open.0 != 0;
+        } else {
+            // フォールバック：直接InputContextから取得を試みる
+            let thread_id = GetWindowThreadProcessId(foreground_window, None);
+            if thread_id != 0 {
+                let himc = ImmGetContext(foreground_window);
+                if !himc.is_invalid() {
+                    is_ime_active = ImmGetOpenStatus(himc).as_bool();
+                    let _ = ImmReleaseContext(foreground_window, himc);
+                }
+            }
+        }
 
-            // 現在の状態と比較して変更があった場合のみ更新
-            if let Some(ime_state) = IME_STATE.get()
-                && let Ok(mut state) = ime_state.try_lock()
-                && state.is_active != is_ime_active
-            {
-                state.is_active = is_ime_active;
-                state.mode_description = if is_ime_active {
-                    "あ".to_string()
-                } else {
-                    "A".to_string()
-                };
+        // 現在の状態と比較して変更があった場合のみ更新
+        if let Some(ime_state) = IME_STATE.get() {
+            if let Ok(mut state) = ime_state.try_lock() {
+                if state.is_active != is_ime_active {
+                    state.is_active = is_ime_active;
+                    state.mode_description = if is_ime_active {
+                        "あ".to_string()
+                    } else {
+                        "A".to_string()
+                    };
 
-                drop(state); // 明示的にlockを解放
+                    println!(
+                        "IME status changed: {}",
+                        if is_ime_active {
+                            "Active (あ)"
+                        } else {
+                            "Inactive (A)"
+                        }
+                    );
 
-                // ウィンドウに状態変更を通知
-                let _ = PostMessageA(
-                    Some(window_handle),
-                    WM_IME_STATUS_CHANGED,
-                    WPARAM(0),
-                    LPARAM(0),
-                );
+                    drop(state); // 明示的にlockを解放
+
+                    // ウィンドウに状態変更を通知
+                    let _ = PostMessageA(
+                        Some(window_handle),
+                        WM_IME_STATUS_CHANGED,
+                        WPARAM(0),
+                        LPARAM(0),
+                    );
+                }
             }
         }
     }
