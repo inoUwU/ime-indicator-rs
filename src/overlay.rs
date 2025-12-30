@@ -1,5 +1,10 @@
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::{
+    Arc, Mutex, OnceLock,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
+use tray_icon::menu::MenuEvent;
+use tray_icon::menu::MenuId;
 use windows::{
     Win32::Foundation::*,
     Win32::Graphics::Gdi::{
@@ -84,10 +89,10 @@ fn check_ime_status_and_update_with_custom_debounce(window_handle: HWND, debounc
     }
 
     // 処理中フラグをリセット
-    if let Some(is_checking) = IS_CHECKING.get() {
-        if let Ok(mut checking) = is_checking.try_lock() {
-            *checking = false;
-        }
+    if let Some(is_checking) = IS_CHECKING.get()
+        && let Ok(mut checking) = is_checking.try_lock()
+    {
+        *checking = false;
     }
 }
 
@@ -538,6 +543,48 @@ pub fn run_message_loop() -> windows::core::Result<()> {
 
         while GetMessageA(&mut message, None, 0, 0).into() {
             DispatchMessageA(&message);
+        }
+
+        Ok(())
+    }
+}
+
+/// メッセージループを実行します（トレイイベント処理付き）
+pub fn run_message_loop_with_tray(
+    quit_menu_id: MenuId,
+    should_quit: Arc<AtomicBool>,
+) -> windows::core::Result<()> {
+    unsafe {
+        let mut message = MSG::default();
+
+        loop {
+            // メニューイベントをチェック
+            if let Ok(event) = MenuEvent::receiver().try_recv()
+                && event.id == quit_menu_id
+            {
+                println!("Quit menu item clicked");
+                should_quit.store(true, Ordering::SeqCst);
+            }
+
+            // 終了フラグをチェック
+            if should_quit.load(Ordering::SeqCst) {
+                if let Some(&window_handle_raw) = WINDOW_HANDLE.get() {
+                    let window_handle = HWND(window_handle_raw as *mut _);
+                    let _ = PostMessageA(Some(window_handle), WM_CLOSE, WPARAM(0), LPARAM(0));
+                }
+                break;
+            }
+
+            // Windowsメッセージを処理（非ブロッキング）
+            if PeekMessageA(&mut message, None, 0, 0, PM_REMOVE).as_bool() {
+                if message.message == WM_QUIT {
+                    break;
+                }
+                DispatchMessageA(&message);
+            } else {
+                // メッセージがない場合は少し待機
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
         }
 
         Ok(())
