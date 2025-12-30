@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use windows::{
     Win32::Foundation::*,
     Win32::Graphics::Gdi::{
@@ -17,6 +18,7 @@ static WINDOW_HANDLE: OnceLock<isize> = OnceLock::new(); // HWNDをisizeとし�
 static IME_STATE: OnceLock<Arc<Mutex<ImeState>>> = OnceLock::new();
 static KEYBOARD_HOOK: OnceLock<isize> = OnceLock::new(); // HHOOKをisizeとして保存
 static EVENT_HOOK: OnceLock<isize> = OnceLock::new(); // HWINEVENTHOOKをisizeとして保存
+static LAST_CHECK_TIME: OnceLock<Arc<Mutex<Instant>>> = OnceLock::new(); // デバウンス用の最終チェック時刻
 
 // IME状態を管理する構造体
 #[derive(Debug, Clone)]
@@ -24,10 +26,30 @@ struct ImeState {
     is_active: bool,
     mode_description: String,
     should_show: bool,
+    last_update: Instant,
 }
 
 const WM_IME_STATUS_CHANGED: u32 = WM_USER + 1;
 const IMC_GETOPENSTATUS: u32 = 5;
+const DEBOUNCE_DURATION_MS: u64 = 100; // 100ms以内の連続チェックを防ぐ
+
+/// デバウンス機能付きでIME状態をチェックして更新
+fn check_ime_status_and_update_with_debounce(window_handle: HWND) {
+    // デバウンスチェック - 短時間内の連続呼び出しを防ぐ
+    if let Some(last_check) = LAST_CHECK_TIME.get() {
+        if let Ok(mut last_time) = last_check.try_lock() {
+            let now = Instant::now();
+            if now.duration_since(*last_time) < Duration::from_millis(DEBOUNCE_DURATION_MS) {
+                return; // 短時間内の連続呼び出しをスキップ
+            }
+            *last_time = now;
+        } else {
+            return; // ロックが取得できない場合はスキップ
+        }
+    }
+
+    check_ime_status_and_update(window_handle);
+}
 
 // Low-Level Keyboard Hook Procedure
 extern "system" fn low_level_keyboard_proc(
@@ -37,10 +59,10 @@ extern "system" fn low_level_keyboard_proc(
 ) -> LRESULT {
     unsafe {
         if n_code >= 0 {
-            // キーボード入力があったときにIME状態をチェック
+            // キーボード入力があったときにIME状態をチェック（デバウンス付き）
             if let Some(&window_handle_raw) = WINDOW_HANDLE.get() {
                 let window_handle = HWND(window_handle_raw as *mut _);
-                check_ime_status_and_update(window_handle);
+                check_ime_status_and_update_with_debounce(window_handle);
             }
         }
         // 次のフックプロシージャにチェーンする
@@ -58,12 +80,12 @@ extern "system" fn win_event_proc(
     _dw_event_thread: u32,
     _dw_ms_event_time: u32,
 ) {
-    // フォーカス変更やウィンドウ状態変更の際にIME状態をチェック
+    // フォーカス変更やウィンドウ状態変更の際にIME状態をチェック（デバウンス付き）
     match event {
         EVENT_OBJECT_FOCUS | EVENT_SYSTEM_FOREGROUND => {
             if let Some(&window_handle_raw) = WINDOW_HANDLE.get() {
                 let window_handle = HWND(window_handle_raw as *mut _);
-                check_ime_status_and_update(window_handle);
+                check_ime_status_and_update_with_debounce(window_handle);
             }
         }
         _ => {}
@@ -163,8 +185,8 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
                     // 表示タイマー（3秒後の自動非表示）
                     hide_overlay_window(window);
                 } else if wparam.0 == 999 {
-                    // IME監視タイマー（100ms間隔での状態チェック）
-                    check_ime_status_and_update(window);
+                    // IME監視タイマー（バックアップ目的、デバウンス付き）
+                    check_ime_status_and_update_with_debounce(window);
                 }
                 LRESULT(0)
             }
@@ -228,6 +250,7 @@ pub fn create_overlay_window() -> windows::core::Result<HWND> {
         // 現在の実際のIME状態を取得して初期化
         let current_ime_status = get_current_ime_status();
         let initial_description = if current_ime_status { "あ" } else { "A" };
+        let now = Instant::now();
 
         println!(
             "Initial IME status: {} ({})",
@@ -239,10 +262,14 @@ pub fn create_overlay_window() -> windows::core::Result<HWND> {
             initial_description
         );
 
+        // デバウンス用の最終チェック時刻を初期化
+        let _ = LAST_CHECK_TIME.set(Arc::new(Mutex::new(now)));
+
         let _ = IME_STATE.set(Arc::new(Mutex::new(ImeState {
             is_active: current_ime_status,
             mode_description: initial_description.to_string(),
             should_show: false,
+            last_update: now,
         })));
 
         Ok(hwnd)
@@ -300,10 +327,10 @@ pub fn setup_ime_hook(_window_handle: HWND, _display_duration: u32) -> windows::
             let _ = EVENT_HOOK.set(event_hook.0 as isize);
         }
 
-        // バックアップとして軽量なタイマーも設定（5秒間隔）
+        // バックアップとして軽量なタイマーも設定（2秒間隔に短縮）
         if let Some(&window_handle_raw) = WINDOW_HANDLE.get() {
             let window_handle = HWND(window_handle_raw as *mut _);
-            SetTimer(Some(window_handle), 999, 5000, None); // バックアップタイマー：5秒間隔
+            SetTimer(Some(window_handle), 999, 2000, None); // バックアップタイマー：2秒間隔
             println!("Backup timer set successfully");
         }
 
@@ -374,12 +401,14 @@ fn check_ime_status_and_update(window_handle: HWND) {
         if let Some(ime_state) = IME_STATE.get() {
             if let Ok(mut state) = ime_state.try_lock() {
                 if state.is_active != is_ime_active {
+                    let now = Instant::now();
                     state.is_active = is_ime_active;
                     state.mode_description = if is_ime_active {
                         "あ".to_string()
                     } else {
                         "A".to_string()
                     };
+                    state.last_update = now;
 
                     println!(
                         "IME status changed: {}",
