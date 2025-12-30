@@ -24,7 +24,6 @@ struct ImeState {
 }
 
 const WM_IME_STATUS_CHANGED: u32 = WM_USER + 1;
-const WM_HIDE_OVERLAY: u32 = WM_USER + 2;
 const IMC_GETOPENSTATUS: u32 = 5;
 
 extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -191,27 +190,26 @@ fn check_ime_status_and_update(window_handle: HWND) {
             let is_ime_active = ime_open.0 != 0;
 
             // 現在の状態と比較して変更があった場合のみ更新
-            if let Some(ime_state) = IME_STATE.get() {
-                if let Ok(mut state) = ime_state.try_lock() {
-                    if state.is_active != is_ime_active {
-                        state.is_active = is_ime_active;
-                        state.mode_description = if is_ime_active {
-                            "あ".to_string()
-                        } else {
-                            "A".to_string()
-                        };
+            if let Some(ime_state) = IME_STATE.get()
+                && let Ok(mut state) = ime_state.try_lock()
+                && state.is_active != is_ime_active
+            {
+                state.is_active = is_ime_active;
+                state.mode_description = if is_ime_active {
+                    "あ".to_string()
+                } else {
+                    "A".to_string()
+                };
 
-                        drop(state); // 明示的にlockを解放
+                drop(state); // 明示的にlockを解放
 
-                        // ウィンドウに状態変更を通知
-                        let _ = PostMessageA(
-                            Some(window_handle),
-                            WM_IME_STATUS_CHANGED,
-                            WPARAM(0),
-                            LPARAM(0),
-                        );
-                    }
-                }
+                // ウィンドウに状態変更を通知
+                let _ = PostMessageA(
+                    Some(window_handle),
+                    WM_IME_STATUS_CHANGED,
+                    WPARAM(0),
+                    LPARAM(0),
+                );
             }
         }
     }
