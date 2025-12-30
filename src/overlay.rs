@@ -19,6 +19,7 @@ static IME_STATE: OnceLock<Arc<Mutex<ImeState>>> = OnceLock::new();
 static KEYBOARD_HOOK: OnceLock<isize> = OnceLock::new(); // HHOOKをisizeとして保存
 static EVENT_HOOK: OnceLock<isize> = OnceLock::new(); // HWINEVENTHOOKをisizeとして保存
 static LAST_CHECK_TIME: OnceLock<Arc<Mutex<Instant>>> = OnceLock::new(); // デバウンス用の最終チェック時刻
+static IS_CHECKING: OnceLock<Arc<Mutex<bool>>> = OnceLock::new(); // 処理中フラグ
 
 // IME状態を管理する構造体
 #[derive(Debug, Clone)]
@@ -49,20 +50,45 @@ fn check_ime_status_and_update_with_debounce(window_handle: HWND) {
 
 /// カスタム遅延でIME状態をチェックして更新
 fn check_ime_status_and_update_with_custom_debounce(window_handle: HWND, debounce_ms: u64) {
-    // デバウンスチェック - 短時間内の連続呼び出しを防ぐ
-    if let Some(last_check) = LAST_CHECK_TIME.get() {
-        if let Ok(mut last_time) = last_check.try_lock() {
-            let now = Instant::now();
-            if now.duration_since(*last_time) < Duration::from_millis(debounce_ms) {
-                return; // 短時間内の連続呼び出しをスキップ
+    // 処理中フラグをチェック - 同時実行を防ぐ
+    if let Some(is_checking) = IS_CHECKING.get() {
+        if let Ok(mut checking) = is_checking.try_lock() {
+            if *checking {
+                return; // 既に処理中の場合はスキップ
             }
-            *last_time = now;
+            *checking = true;
         } else {
             return; // ロックが取得できない場合はスキップ
         }
     }
 
-    check_ime_status_and_update(window_handle);
+    // デバウンスチェック - 短時間内の連続呼び出しを防ぐ
+    let should_process = if let Some(last_check) = LAST_CHECK_TIME.get() {
+        if let Ok(mut last_time) = last_check.try_lock() {
+            let now = Instant::now();
+            if now.duration_since(*last_time) < Duration::from_millis(debounce_ms) {
+                false // 短時間内の連続呼び出しをスキップ
+            } else {
+                *last_time = now;
+                true
+            }
+        } else {
+            false // ロックが取得できない場合はスキップ
+        }
+    } else {
+        false
+    };
+
+    if should_process {
+        check_ime_status_and_update(window_handle);
+    }
+
+    // 処理中フラグをリセット
+    if let Some(is_checking) = IS_CHECKING.get() {
+        if let Ok(mut checking) = is_checking.try_lock() {
+            *checking = false;
+        }
+    }
 }
 
 // Low-Level Keyboard Hook Procedure
@@ -278,7 +304,7 @@ pub fn create_overlay_window() -> windows::core::Result<HWND> {
         let y = 50; // 上端から50px離れた位置
 
         let hwnd = CreateWindowExA(
-            WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+            WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_TRANSPARENT,
             window_class,
             s!("IME Indicator Overlay"),
             WS_POPUP,      // 初期状態では非表示
@@ -315,6 +341,7 @@ pub fn create_overlay_window() -> windows::core::Result<HWND> {
 
         // デバウンス用の最終チェック時刻を初期化
         let _ = LAST_CHECK_TIME.set(Arc::new(Mutex::new(now)));
+        let _ = IS_CHECKING.set(Arc::new(Mutex::new(false)));
 
         let _ = IME_STATE.set(Arc::new(Mutex::new(ImeState {
             is_active: current_ime_status,
@@ -487,10 +514,11 @@ fn check_ime_status_and_update(window_handle: HWND) {
 /// オーバーレイウィンドウを表示する
 fn show_overlay_window(window_handle: HWND) {
     unsafe {
-        let _ = ShowWindow(window_handle, SW_SHOW);
+        let _ = ShowWindow(window_handle, SW_SHOWNA);
         let _ = InvalidateRect(Some(window_handle), None, true);
 
-        // 3秒後に非表示にするタイマーを設定
+        // 既存のタイマーをキャンセルしてから新しいタイマーを設定
+        let _ = KillTimer(Some(window_handle), 1);
         SetTimer(Some(window_handle), 1, 3000, None);
     }
 }
