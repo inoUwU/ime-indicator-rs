@@ -21,3 +21,8 @@ windows = { version = "0.62.2", features = [
 
 [dependencies.windows-strings]
 version = "0.5"
+
+[profile.release]
+opt-level = 3
+debug = false
+lto = "fat"
