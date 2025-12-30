@@ -29,17 +29,31 @@ struct ImeState {
     last_update: Instant,
 }
 
+impl std::ops::Deref for ImeState {
+    type Target = bool;
+
+    fn deref(&self) -> &Self::Target {
+        &self.should_show
+    }
+}
+
 const WM_IME_STATUS_CHANGED: u32 = WM_USER + 1;
 const IMC_GETOPENSTATUS: u32 = 5;
-const DEBOUNCE_DURATION_MS: u64 = 100; // 100ms以内の連続チェックを防ぐ
+const DEBOUNCE_DURATION_MS: u64 = 50; // 50ms以内の連続チェックを防ぐ（反応性重視）
+const IME_KEY_DEBOUNCE_MS: u64 = 20; // IME切り替えキー用の短い遅延
 
 /// デバウンス機能付きでIME状態をチェックして更新
 fn check_ime_status_and_update_with_debounce(window_handle: HWND) {
+    check_ime_status_and_update_with_custom_debounce(window_handle, DEBOUNCE_DURATION_MS);
+}
+
+/// カスタム遅延でIME状態をチェックして更新
+fn check_ime_status_and_update_with_custom_debounce(window_handle: HWND, debounce_ms: u64) {
     // デバウンスチェック - 短時間内の連続呼び出しを防ぐ
     if let Some(last_check) = LAST_CHECK_TIME.get() {
         if let Ok(mut last_time) = last_check.try_lock() {
             let now = Instant::now();
-            if now.duration_since(*last_time) < Duration::from_millis(DEBOUNCE_DURATION_MS) {
+            if now.duration_since(*last_time) < Duration::from_millis(debounce_ms) {
                 return; // 短時間内の連続呼び出しをスキップ
             }
             *last_time = now;
@@ -59,10 +73,47 @@ extern "system" fn low_level_keyboard_proc(
 ) -> LRESULT {
     unsafe {
         if n_code >= 0 {
-            // キーボード入力があったときにIME状態をチェック（デバウンス付き）
-            if let Some(&window_handle_raw) = WINDOW_HANDLE.get() {
-                let window_handle = HWND(window_handle_raw as *mut _);
-                check_ime_status_and_update_with_debounce(window_handle);
+            // IME切り替えに関連するキーイベントのみを監視
+            match w_param.0 as u32 {
+                WM_KEYDOWN | WM_SYSKEYDOWN => {
+                    // キーコードを取得してIME関連キーかどうかをチェック
+                    let kbd_struct = *(l_param.0 as *const KBDLLHOOKSTRUCT);
+                    let vk_code = kbd_struct.vkCode;
+
+                    // IME関連キー、英数字キー、または修飾キーの場合のみチェック
+                    let should_check = matches!(vk_code,
+                        // 半角/全角キー
+                        0xF3 | 0xF4 |  // VK_DBE_SBCSCHAR, VK_DBE_DBCSCHAR
+                        0x19 |        // VK_KANJI (半角/全角)
+                        0x1C |        // VK_CONVERT (変換)
+                        0x1D |        // VK_NONCONVERT (無変換)
+                        // 修飾キー
+                        0x12 |        // VK_MENU (Alt)
+                        0x11 |        // VK_CONTROL (Ctrl)
+                        0x10 |        // VK_SHIFT (Shift)
+                        // 英数字キー範囲
+                        0x30..=0x39 | // 0-9
+                        0x41..=0x5A   // A-Z
+                    );
+
+                    // IME切り替えキー（半角/全角など）かどうかを判定
+                    let is_ime_toggle_key = matches!(vk_code, 0xF3 | 0xF4 | 0x19);
+
+                    if should_check && let Some(&window_handle_raw) = WINDOW_HANDLE.get() {
+                        let window_handle = HWND(window_handle_raw as *mut _);
+                        // IME切り替えキーの場合は短い遅延、その他は通常の遅延
+                        let debounce_time = if is_ime_toggle_key {
+                            IME_KEY_DEBOUNCE_MS
+                        } else {
+                            DEBOUNCE_DURATION_MS
+                        };
+                        check_ime_status_and_update_with_custom_debounce(
+                            window_handle,
+                            debounce_time,
+                        );
+                    }
+                }
+                _ => {} // その他のイベントは無視
             }
         }
         // 次のフックプロシージャにチェーンする
@@ -327,10 +378,10 @@ pub fn setup_ime_hook(_window_handle: HWND, _display_duration: u32) -> windows::
             let _ = EVENT_HOOK.set(event_hook.0 as isize);
         }
 
-        // バックアップとして軽量なタイマーも設定（2秒間隔に短縮）
+        // バックアップとして軽量なタイマーも設定（1秒間隔に短縮）
         if let Some(&window_handle_raw) = WINDOW_HANDLE.get() {
             let window_handle = HWND(window_handle_raw as *mut _);
-            SetTimer(Some(window_handle), 999, 2000, None); // バックアップタイマー：2秒間隔
+            SetTimer(Some(window_handle), 999, 1000, None); // バックアップタイマー：1秒間隔
             println!("Backup timer set successfully");
         }
 
@@ -398,38 +449,37 @@ fn check_ime_status_and_update(window_handle: HWND) {
         }
 
         // 現在の状態と比較して変更があった場合のみ更新
-        if let Some(ime_state) = IME_STATE.get() {
-            if let Ok(mut state) = ime_state.try_lock() {
-                if state.is_active != is_ime_active {
-                    let now = Instant::now();
-                    state.is_active = is_ime_active;
-                    state.mode_description = if is_ime_active {
-                        "あ".to_string()
-                    } else {
-                        "A".to_string()
-                    };
-                    state.last_update = now;
+        if let Some(ime_state) = IME_STATE.get()
+            && let Ok(mut state) = ime_state.try_lock()
+            && state.is_active != is_ime_active
+        {
+            let now = Instant::now();
+            state.is_active = is_ime_active;
+            state.mode_description = if is_ime_active {
+                "あ".to_string()
+            } else {
+                "A".to_string()
+            };
+            state.last_update = now;
 
-                    println!(
-                        "IME status changed: {}",
-                        if is_ime_active {
-                            "Active (あ)"
-                        } else {
-                            "Inactive (A)"
-                        }
-                    );
-
-                    drop(state); // 明示的にlockを解放
-
-                    // ウィンドウに状態変更を通知
-                    let _ = PostMessageA(
-                        Some(window_handle),
-                        WM_IME_STATUS_CHANGED,
-                        WPARAM(0),
-                        LPARAM(0),
-                    );
+            println!(
+                "IME status changed: {}",
+                if is_ime_active {
+                    "Active (あ)"
+                } else {
+                    "Inactive (A)"
                 }
-            }
+            );
+
+            drop(state); // 明示的にlockを解放
+
+            // ウィンドウに状態変更を通知
+            let _ = PostMessageA(
+                Some(window_handle),
+                WM_IME_STATUS_CHANGED,
+                WPARAM(0),
+                LPARAM(0),
+            );
         }
     }
 }
