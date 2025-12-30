@@ -2,7 +2,6 @@ mod ime;
 mod message_loop;
 mod overlay;
 mod tray;
-mod utils;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};

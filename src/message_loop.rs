@@ -1,10 +1,7 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tray_icon::menu::{MenuEvent, MenuId};
-use windows::{
-    Win32::Foundation::*,
-    Win32::UI::WindowsAndMessaging::*,
-};
+use windows::{Win32::Foundation::*, Win32::UI::WindowsAndMessaging::*};
 
 /// メッセージループを実行（トレイイベント処理付き）
 pub fn run(
@@ -17,11 +14,11 @@ pub fn run(
 
         loop {
             // メニューイベントをチェック
-            if let Ok(event) = MenuEvent::receiver().try_recv() {
-                if event.id == quit_menu_id {
-                    println!("Quit menu item clicked");
-                    should_quit.store(true, Ordering::SeqCst);
-                }
+            if let Ok(event) = MenuEvent::receiver().try_recv()
+                && event.id == quit_menu_id
+            {
+                println!("Quit menu item clicked");
+                should_quit.store(true, Ordering::SeqCst);
             }
 
             // 終了フラグをチェック
