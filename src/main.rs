@@ -1,12 +1,17 @@
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+
 mod ime;
 mod message_loop;
 mod overlay;
 mod tray;
 
+use log::debug;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-
 fn main() -> windows::core::Result<()> {
+    // ロガーを初期化
+    init_logger();
+
     // オーバーレイウィンドウを作成
     let window_handle = overlay::create_window()?;
 
@@ -25,12 +30,12 @@ fn main() -> windows::core::Result<()> {
 
     // Ctrl+Cハンドラを設定
     ctrlc::set_handler(move || {
-        println!("Received interrupt signal, cleaning up...");
+        debug!("Received interrupt signal, cleaning up...");
         should_quit_clone.store(true, Ordering::SeqCst);
     })
     .expect("Error setting Ctrl-C handler");
 
-    println!("IME Indicator is running. Right-click the system tray icon to quit.");
+    debug!("IME Indicator is running. Right-click the system tray icon to quit.");
 
     // メッセージループを実行
     let result = message_loop::run(
@@ -43,4 +48,12 @@ fn main() -> windows::core::Result<()> {
     ime::cleanup_hooks();
 
     result
+}
+
+fn init_logger() {
+    #[cfg(debug_assertions)]
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+
+    #[cfg(not(debug_assertions))]
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 }

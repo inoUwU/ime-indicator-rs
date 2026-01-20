@@ -1,3 +1,4 @@
+use log::debug;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tray_icon::menu::{MenuEvent, MenuId};
@@ -17,7 +18,7 @@ pub fn run(
             if let Ok(event) = MenuEvent::receiver().try_recv()
                 && event.id == quit_menu_id
             {
-                println!("Quit menu item clicked");
+                debug!("Quit menu item clicked");
                 should_quit.store(true, Ordering::SeqCst);
             }
 

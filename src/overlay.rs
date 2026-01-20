@@ -10,6 +10,7 @@ use windows::{
 };
 
 use crate::ime;
+use log::debug;
 
 /// オーバーレイウィンドウを作成
 pub fn create_window() -> windows::core::Result<HWND> {
@@ -87,7 +88,7 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
                 LRESULT(0)
             }
             ime::WM_IME_STATUS_CHANGED => {
-                println!("IME status changed");
+                debug!("IME status changed");
                 show_overlay(window);
                 LRESULT(0)
             }
@@ -102,7 +103,7 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
                 LRESULT(0)
             }
             WM_DESTROY => {
-                println!("WM_DESTROY");
+                debug!("WM_DESTROY");
                 ime::cleanup_hooks();
                 PostQuitMessage(0);
                 LRESULT(0)

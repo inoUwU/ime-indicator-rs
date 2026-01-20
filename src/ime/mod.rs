@@ -3,12 +3,11 @@ pub mod state;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use windows::{
-    Win32::Foundation::*,
-    Win32::UI::Accessibility::*,
-    Win32::UI::Input::Ime::*,
+    Win32::Foundation::*, Win32::UI::Accessibility::*, Win32::UI::Input::Ime::*,
     Win32::UI::WindowsAndMessaging::*,
 };
 
+use log::debug;
 use state::{ImeState, SharedImeState};
 
 // 安全なグローバル状態管理
@@ -33,9 +32,13 @@ pub fn initialize(window_handle: HWND) -> windows::core::Result<()> {
     let current_ime_status = get_current_ime_status();
     let _ = IME_STATE.set(Arc::new(Mutex::new(ImeState::new(current_ime_status))));
 
-    println!(
+    debug!(
         "Initial IME status: {}",
-        if current_ime_status { "Active (あ)" } else { "Inactive (A)" }
+        if current_ime_status {
+            "Active (あ)"
+        } else {
+            "Inactive (A)"
+        }
     );
 
     Ok(())
@@ -44,13 +47,13 @@ pub fn initialize(window_handle: HWND) -> windows::core::Result<()> {
 /// グローバルIMEフックを設定
 pub fn setup_hooks() -> windows::core::Result<()> {
     unsafe {
-        println!("Setting up global IME hook...");
+        debug!("Setting up global IME hook...");
 
         let instance = windows::Win32::System::LibraryLoader::GetModuleHandleA(None)?;
-        println!("Got module handle: {:?}", instance);
+        debug!("Got module handle: {:?}", instance);
 
         // Low-Level Keyboard Hook
-        println!("Setting up keyboard hook...");
+        debug!("Setting up keyboard hook...");
         let keyboard_hook = SetWindowsHookExA(
             WH_KEYBOARD_LL,
             Some(low_level_keyboard_proc),
@@ -58,11 +61,11 @@ pub fn setup_hooks() -> windows::core::Result<()> {
             0,
         )?;
 
-        println!("Keyboard hook established: {:?}", keyboard_hook);
+        debug!("Keyboard hook established: {:?}", keyboard_hook);
         let _ = KEYBOARD_HOOK.set(keyboard_hook.0 as isize);
 
         // Window Event Hook
-        println!("Setting up window event hook...");
+        debug!("Setting up window event hook...");
         let event_hook = SetWinEventHook(
             EVENT_OBJECT_FOCUS,
             EVENT_SYSTEM_FOREGROUND,
@@ -74,9 +77,9 @@ pub fn setup_hooks() -> windows::core::Result<()> {
         );
 
         if event_hook.is_invalid() {
-            println!("Failed to set window event hook");
+            debug!("Failed to set window event hook");
         } else {
-            println!("Window event hook established: {:?}", event_hook);
+            debug!("Window event hook established: {:?}", event_hook);
             let _ = EVENT_HOOK.set(event_hook.0 as isize);
         }
 
@@ -84,10 +87,10 @@ pub fn setup_hooks() -> windows::core::Result<()> {
         if let Some(&window_handle_raw) = WINDOW_HANDLE.get() {
             let window_handle = HWND(window_handle_raw as *mut _);
             SetTimer(Some(window_handle), 999, 1000, None);
-            println!("Backup timer set");
+            debug!("Backup timer set");
         }
 
-        println!("Global IME hook established successfully");
+        debug!("Global IME hook established successfully");
 
         // 初期表示
         if let Some(&window_handle_raw) = WINDOW_HANDLE.get() {
@@ -112,7 +115,7 @@ pub fn cleanup_hooks() {
             let _ = UnhookWinEvent(event_hook);
         }
 
-        println!("Hooks cleaned up");
+        debug!("Hooks cleaned up");
     }
 }
 
@@ -208,9 +211,13 @@ fn check_and_notify_ime_change(window_handle: HWND) {
     {
         state.update(is_ime_active);
 
-        println!(
+        debug!(
             "IME status changed: {}",
-            if is_ime_active { "Active (あ)" } else { "Inactive (A)" }
+            if is_ime_active {
+                "Active (あ)"
+            } else {
+                "Inactive (A)"
+            }
         );
 
         drop(state);
