@@ -51,9 +51,11 @@ fn main() -> windows::core::Result<()> {
 }
 
 fn init_logger() {
-    #[cfg(debug_assertions)]
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
-
-    #[cfg(not(debug_assertions))]
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    let default_level = if cfg!(debug_assertions) {
+        "debug"
+    } else {
+        "info"
+    };
+    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or(default_level))
+        .init();
 }

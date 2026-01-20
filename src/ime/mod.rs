@@ -107,12 +107,16 @@ pub fn cleanup_hooks() {
     unsafe {
         if let Some(&keyboard_hook_raw) = KEYBOARD_HOOK.get() {
             let keyboard_hook = HHOOK(keyboard_hook_raw as *mut _);
-            let _ = UnhookWindowsHookEx(keyboard_hook);
+            if let Err(e) = UnhookWindowsHookEx(keyboard_hook) {
+                debug!("Failed to unhook keyboard hook: {:?}", e);
+            }
         }
 
         if let Some(&event_hook_raw) = EVENT_HOOK.get() {
             let event_hook = HWINEVENTHOOK(event_hook_raw as *mut _);
-            let _ = UnhookWinEvent(event_hook);
+            if !UnhookWinEvent(event_hook).as_bool() {
+                debug!("Failed to unhook event hook");
+            }
         }
 
         debug!("Hooks cleaned up");
