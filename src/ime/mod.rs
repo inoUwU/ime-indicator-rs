@@ -7,7 +7,7 @@ use windows::{
     Win32::UI::WindowsAndMessaging::*,
 };
 
-use log::debug;
+use log::{debug, error};
 use state::{ImeState, SharedImeState};
 
 // 安全なグローバル状態管理
@@ -108,14 +108,14 @@ pub fn cleanup_hooks() {
         if let Some(&keyboard_hook_raw) = KEYBOARD_HOOK.get() {
             let keyboard_hook = HHOOK(keyboard_hook_raw as *mut _);
             if let Err(e) = UnhookWindowsHookEx(keyboard_hook) {
-                debug!("Failed to unhook keyboard hook: {:?}", e);
+                error!("Failed to unhook keyboard hook: {:?}", e);
             }
         }
 
         if let Some(&event_hook_raw) = EVENT_HOOK.get() {
             let event_hook = HWINEVENTHOOK(event_hook_raw as *mut _);
             if !UnhookWinEvent(event_hook).as_bool() {
-                debug!("Failed to unhook event hook");
+                error!("Failed to unhook event hook");
             }
         }
 
