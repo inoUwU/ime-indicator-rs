@@ -7,7 +7,7 @@ use windows::{
     Win32::UI::WindowsAndMessaging::*,
 };
 
-use log::{debug, error};
+use log::{debug, warn, error};
 use state::{ImeState, SharedImeState};
 
 // 安全なグローバル状態管理
@@ -77,7 +77,7 @@ pub fn setup_hooks() -> windows::core::Result<()> {
         );
 
         if event_hook.is_invalid() {
-            debug!("Failed to set window event hook");
+            warn!("Failed to set window event hook");
         } else {
             debug!("Window event hook established: {:?}", event_hook);
             let _ = EVENT_HOOK.set(event_hook.0 as isize);

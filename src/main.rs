@@ -5,7 +5,7 @@ mod message_loop;
 mod overlay;
 mod tray;
 
-use log::debug;
+use log::{debug, info};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 fn main() -> windows::core::Result<()> {
@@ -35,7 +35,7 @@ fn main() -> windows::core::Result<()> {
     })
     .expect("Error setting Ctrl-C handler");
 
-    debug!("IME Indicator is running. Right-click the system tray icon to quit.");
+    info!("IME Indicator is running. Right-click the system tray icon to quit.");
 
     // メッセージループを実行
     let result = message_loop::run(
