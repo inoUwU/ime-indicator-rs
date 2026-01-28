@@ -1,12 +1,13 @@
 use windows::{
     Win32::Foundation::*,
     Win32::Graphics::Gdi::{
-        BeginPaint, CreateSolidBrush, DT_CENTER, DT_SINGLELINE, DT_VCENTER, DeleteObject,
-        DrawTextW, EndPaint, FillRect, InvalidateRect, PAINTSTRUCT, SetBkMode, TRANSPARENT,
+        BeginPaint, CreateFontW, CreateSolidBrush, DT_CENTER, DT_SINGLELINE, DT_VCENTER,
+        DeleteObject, DrawTextW, EndPaint, FillRect, InvalidateRect, PAINTSTRUCT, SelectObject,
+        SetBkMode, TRANSPARENT,
     },
     Win32::System::LibraryLoader::GetModuleHandleA,
     Win32::UI::WindowsAndMessaging::*,
-    core::s,
+    core::{s, w},
 };
 
 use crate::ime;
@@ -119,6 +120,25 @@ fn paint_window(window: HWND) {
         let mut ps = PAINTSTRUCT::default();
         let hdc = BeginPaint(window, &mut ps);
 
+        // 読みやすい大きなボールドフォントを設定
+        let font = CreateFontW(
+            48,                                                    // フォントサイズ（高さ）
+            0,                                                     // フォント幅（0で自動）
+            0,                                                     // エスケープ角度
+            0,                                                     // 配置角度
+            windows::Win32::Graphics::Gdi::FW_BOLD.0 as i32,       // 太さ（ボールド）
+            0,                                                     // イタリック
+            0,                                                     // 下線
+            0,                                                     // 取消線
+            windows::Win32::Graphics::Gdi::DEFAULT_CHARSET,        // 文字セット
+            windows::Win32::Graphics::Gdi::OUT_CHARACTER_PRECIS,   // 出力精度
+            windows::Win32::Graphics::Gdi::CLIP_CHARACTER_PRECIS,  // クリップ精度
+            windows::Win32::Graphics::Gdi::DEFAULT_QUALITY,        // 品質
+            windows::Win32::Graphics::Gdi::DEFAULT_PITCH.0.into(), // ピッチとファミリー
+            w!("Yu Gothic UI"),                                    // windows11標準フォント
+        );
+        let old_font = SelectObject(hdc, font.into());
+
         // IME状態に応じて背景色とテキストを変更
         let (bg_color, text) = match ime::get_ime_state() {
             Some(true) => (0x004080FF, "あ"), // オレンジ系背景で"あ"
@@ -135,6 +155,9 @@ fn paint_window(window: HWND) {
         let mut rect = RECT::default();
         let _ = GetClientRect(window, &mut rect);
 
+        // テキスト色を白に設定
+        windows::Win32::Graphics::Gdi::SetTextColor(hdc, COLORREF(0x00FFFFFF));
+
         // IME状態に応じたテキストを中央に表示
         let mut text_wide: Vec<u16> = text.encode_utf16().collect();
         DrawTextW(
@@ -143,6 +166,10 @@ fn paint_window(window: HWND) {
             &mut rect,
             DT_CENTER | DT_VCENTER | DT_SINGLELINE,
         );
+
+        // フォントを復元してリソースをクリーンアップ
+        let _ = SelectObject(hdc, old_font);
+        let _ = DeleteObject(font.into());
 
         let _ = EndPaint(window, &ps);
     }
