@@ -7,7 +7,7 @@ use windows::{
     Win32::UI::WindowsAndMessaging::*,
 };
 
-use log::{debug, warn, error};
+use log::{debug, error, warn};
 use state::{ImeState, SharedImeState};
 
 // 安全なグローバル状態管理

@@ -1,6 +1,6 @@
 use gpui::*;
 use gpui_component::{button::*, *};
-use shared::{load_config, save_config, AppConfig};
+use shared::{AppConfig, load_config, save_config};
 
 /// 設定画面のビューモデル
 struct SettingsView {
@@ -36,7 +36,11 @@ impl Render for SettingsView {
                 div()
                     .v_flex()
                     .gap_2()
-                    .child(div().font_weight(FontWeight::SEMIBOLD).child("Current Settings"))
+                    .child(
+                        div()
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .child("Current Settings"),
+                    )
                     .child(format!("Offset X: {}", config.overlay.offset_x))
                     .child(format!("Offset Y: {}", config.overlay.offset_y))
                     .child(format!("Width: {}", config.overlay.width))
@@ -52,19 +56,16 @@ impl Render for SettingsView {
                     .h_flex()
                     .gap_2()
                     .mt_4()
-                    .child(
-                        Button::new("save")
-                            .primary()
-                            .label("Save (WIP)")
-                            .on_click(move |_, _window, _cx| {
-                                // TODO: 入力値から設定を保存
-                                if let Err(e) = save_config(&config) {
-                                    eprintln!("Failed to save config: {}", e);
-                                } else {
-                                    println!("Config saved successfully!");
-                                }
-                            }),
-                    )
+                    .child(Button::new("save").primary().label("Save (WIP)").on_click(
+                        move |_, _window, _cx| {
+                            // TODO: 入力値から設定を保存
+                            if let Err(e) = save_config(&config) {
+                                eprintln!("Failed to save config: {}", e);
+                            } else {
+                                println!("Config saved successfully!");
+                            }
+                        },
+                    ))
                     .child(
                         Button::new("cancel")
                             .label("Close")
@@ -115,4 +116,3 @@ pub fn show() {
         .detach();
     });
 }
-
