@@ -1,0 +1,124 @@
+# https://taskfile.dev/
+
+version: "3"
+
+vars:
+  # クレート名
+  MAIN_CRATE: ime-indicator
+  SETTINGS_CRATE: settings-gui
+
+tasks:
+  # ====================
+  # デフォルト: ヘルプ表示
+  # ====================
+  default:
+    desc: タスク一覧を表示
+    cmds:
+      - task --list
+
+  # ====================
+  # ビルド系
+  # ====================
+  build:
+    desc: 全クレートをビルド (debug)
+    cmds:
+      - cargo build
+
+  build:release:
+    desc: 全クレートをビルド (release)
+    cmds:
+      - cargo build --release
+
+  build:main:
+    desc: メインアプリのみビルド
+    cmds:
+      - cargo build -p {{.MAIN_CRATE}}
+
+  build:settings:
+    desc: 設定GUIのみビルド
+    cmds:
+      - cargo build -p {{.SETTINGS_CRATE}}
+
+  # ====================
+  # 実行系
+  # ====================
+  run:
+    desc: メインアプリを実行 (debug)
+    cmds:
+      - cargo run -p {{.MAIN_CRATE}}
+
+  run:release:
+    desc: メインアプリを実行 (release)
+    cmds:
+      - cargo run -p {{.MAIN_CRATE}} --release
+
+  settings:
+    desc: 設定GUIを実行
+    aliases: [gui, s]
+    cmds:
+      - cargo run -p {{.SETTINGS_CRATE}}
+
+  # ====================
+  # 開発系
+  # ====================
+  check:
+    desc: 全クレートの構文チェック (高速)
+    cmds:
+      - cargo check --workspace
+
+  clippy:
+    desc: Clippy (lint) を実行
+    cmds:
+      - cargo clippy --workspace -- -D warnings
+
+  fmt:
+    desc: コードフォーマット
+    cmds:
+      - cargo fmt --all
+
+  fmt:check:
+    desc: フォーマットチェック (CI用)
+    cmds:
+      - cargo fmt --all -- --check
+
+  test:
+    desc: テストを実行
+    cmds:
+      - cargo test --workspace
+
+  # ====================
+  # クリーンアップ
+  # ====================
+  clean:
+    desc: ビルド成果物を削除
+    cmds:
+      - cargo clean
+
+  clean:target:
+    desc: targetフォルダを完全削除
+    cmds:
+      - cmd: Remove-Item -Recurse -Force target -ErrorAction SilentlyContinue
+        platforms: [windows]
+      - cmd: rm -rf target
+        platforms: [linux, darwin]
+
+  # ====================
+  # ウォッチ系 (cargo-watch必要)
+  # ====================
+  watch:
+    desc: ファイル変更時に自動ビルド (cargo-watch必要)
+    cmds:
+      - cargo watch -x "check --workspace"
+
+  watch:settings:
+    desc: 設定GUIをウォッチモードで開発
+    cmds:
+      - cargo watch -x "run -p {{.SETTINGS_CRATE}}"
+
+  # ====================
+  # ドキュメント
+  # ====================
+  doc:
+    desc: ドキュメントを生成して開く
+    cmds:
+      - cargo doc --workspace --no-deps --open
