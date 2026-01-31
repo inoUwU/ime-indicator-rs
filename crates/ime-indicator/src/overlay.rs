@@ -13,6 +13,9 @@ use windows::{
 use crate::ime;
 use log::debug;
 
+static WINDOW_WIDTH: i32 = 80;
+static WINDOW_HEIGHT: i32 = 80;
+
 /// オーバーレイウィンドウを作成
 pub fn create_window() -> windows::core::Result<HWND> {
     unsafe {
@@ -31,11 +34,11 @@ pub fn create_window() -> windows::core::Result<HWND> {
         let atom = RegisterClassA(&wc);
         debug_assert!(atom != 0);
 
+        // TODO: マルチモニタ対応 / DPI対応 / 位置調整オプション
+
         // 画面サイズを取得して右上に配置
         let screen_width = GetSystemMetrics(SM_CXSCREEN);
-        let window_width = 80;
-        let window_height = 80;
-        let x = screen_width - window_width - 50;
+        let x = screen_width - WINDOW_WIDTH - 50;
         let y = 50;
 
         let hwnd = CreateWindowExA(
@@ -45,8 +48,8 @@ pub fn create_window() -> windows::core::Result<HWND> {
             WS_POPUP,
             x,
             y,
-            window_width,
-            window_height,
+            WINDOW_WIDTH,
+            WINDOW_HEIGHT,
             None,
             None,
             Some(instance.into()),

@@ -13,90 +13,77 @@ It using the `windows` crate to interact with Windows APIs.
 - System tray integration with Quit menu
 - Automatic overlay display (3 seconds) on IME status changes
 - Keyboard and window event hooks for real-time IME detection
-- Settings for indicator position, size (planned)
+- Settings GUI (separate executable) using GPUI
 
-## Project Structure
+## Project Structure (Cargo Workspace)
 
 ```text
-src/
-├── main.rs              # Entry point - initializes and integrates all modules
-├── tray.rs              # System tray management (TrayManager, icon, menu)
-├── ime/
-│   ├── mod.rs           # IME detection logic, hooks setup, debouncing
-│   └── state.rs         # IME state structure (ImeState, SharedImeState)
-├── overlay.rs           # Overlay window creation, rendering, show/hide
-├── message_loop.rs      # Windows message loop + tray event integration
-└── utils/
-    └── string_utils.rs  # Utility functions
+ime-indicator-rs/
+├── Cargo.toml              # Workspace root
+├── assets/
+│   └── icon.ico
+├── crates/
+│   ├── ime-indicator/      # Main application (overlay, tray, hooks)
+│   │   ├── Cargo.toml
+│   │   ├── build.rs
+│   │   └── src/
+│   │       ├── main.rs
+│   │       ├── message_loop.rs
+│   │       ├── overlay.rs
+│   │       ├── tray.rs
+│   │       └── ime/
+│   │           ├── mod.rs
+│   │           └── state.rs
+│   ├── settings-gui/       # Settings window (GPUI, separate exe)
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── main.rs
+│   │       └── gui.rs
+│   └── shared/             # Shared config structs
+│       ├── Cargo.toml
+│       └── src/
+│           ├── lib.rs
+│           └── config.rs
 ```
 
 ## Module Responsibilities
 
-### main.rs
+### crates/ime-indicator (main app)
 
-- Application entry point
-- Creates overlay window
-- Initializes IME manager
-- Sets up system tray
-- Configures Ctrl+C handler
-- Runs message loop
-- Cleans up resources on exit
+- **main.rs**: Entry point, initializes overlay, IME hooks, tray, message loop
+- **tray.rs**: System tray management (TrayManager, icon, Settings/Quit menus)
+- **overlay.rs**: Layered transparent overlay window, renders "あ"/"A"
+- **message_loop.rs**: Windows message loop, launches settings-gui.exe
+- **ime/mod.rs**: IME detection via hooks, debouncing, WM_IME_STATUS_CHANGED
+- **ime/state.rs**: ImeState struct, SharedImeState type
 
-### tray.rs
+### crates/settings-gui (settings window)
 
-- `TrayManager` struct managing system tray lifecycle
-- Menu creation (Quit item)
-- Icon generation (32x32 red circle)
-- Exposes `quit_menu_id` for event handling
+- **main.rs**: Entry point, calls gui::show()
+- **gui.rs**: GPUI-based settings UI (TODO: input fields)
 
-### ime/mod.rs
+### crates/shared (common library)
 
-- IME state detection using Windows IMM APIs
-- Low-level keyboard hook (`WH_KEYBOARD_LL`)
-- Window event hook for focus changes
-- Debouncing to prevent excessive checks
-- Sends `WM_IME_STATUS_CHANGED` message on state changes
-- Global state management with `OnceLock` and `Mutex`
-
-### ime/state.rs
-
-- `ImeState` struct: tracks active status, description, update time
-- `SharedImeState` type alias for thread-safe state sharing
-- Helper methods for state initialization and updates
-
-### overlay.rs
-
-- Creates layered, transparent, topmost window
-- Window procedure handling WM_PAINT, WM_TIMER, WM_DESTROY
-- Renders IME status ("あ" for active, "A" for inactive)
-- Color-coded backgrounds (orange for active, gray for inactive)
-- 3-second auto-hide timer
-
-### message_loop.rs
-
-- Non-blocking message loop using `PeekMessageA`
-- Checks tray menu events
-- Monitors quit flag (`AtomicBool`)
-- Dispatches Windows messages
-- Graceful shutdown on quit
-
-## Key Technologies
-
-- **windows-rs**: Windows API bindings
-- **tray-icon**: System tray integration
-- **ctrlc**: Ctrl+C signal handling
-- Low-level hooks for IME monitoring
-- Layered windows for transparency
+- **config.rs**: AppConfig, OverlayConfig structs, load/save functions
 
 ## Build & Run
 
 ```powershell
+# Build all crates
 cargo build
-cargo run
+
+# Run main indicator
+cargo run -p ime-indicator
+
+# Run settings GUI only (for GPUI practice)
+cargo run -p settings-gui
+
+# Release build
+cargo build --release
 ```
 
 ## Notes
 
-- Window Event Hook setup may fail (non-critical, backup timer compensates)
-- Keyboard hook requires appropriate permissions
-- Overlay positioned at top-right (50px margins)
+- Settings GUI is launched as a separate process from tray menu
+- GPUI does not support HOT reload, but separate exe allows faster iteration
+- Shared config stored in `config.toml` next to executable

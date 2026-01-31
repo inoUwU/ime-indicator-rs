@@ -3235,17 +3235,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edcd27d72f2f071c64249075f42e205ff93c9a4c5f6c6da53e79ed9f9832c285"
 
 [[package]]
-name = "ime-indicator-rs"
+name = "ime-indicator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "ctrlc",
  "env_logger",
- "gpui",
- "gpui-component",
  "log",
- "serde",
- "toml 0.9.11+spec-1.1.0",
+ "shared",
  "tray-icon",
  "windows 0.62.2",
  "windows-strings 0.5.1",
@@ -5748,6 +5745,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "settings-gui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "gpui",
+ "gpui-component",
+ "shared",
+]
+
+[[package]]
 name = "sha1_smol"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5762,6 +5769,14 @@ dependencies = [
  "cfg-if",
  "cpufeatures",
  "digest",
+]
+
+[[package]]
+name = "shared"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "toml 0.9.11+spec-1.1.0",
 ]
 
 [[package]]

@@ -27,8 +27,10 @@ impl TrayManager {
         let quit_menu_id = quit_item.id().clone();
         tray_menu.append(&quit_item)?;
 
-        // アイコンを作成
-        let icon = Icon::from_path("assets/icon.ico", None).expect("Failed to load ico");
+        // アイコンを作成 (ワークスペースルートからの相対パス)
+        let icon = Icon::from_path("assets/icon.ico", None)
+            .or_else(|_| Icon::from_path("../../assets/icon.ico", None))
+            .expect("Failed to load ico");
 
         // トレイアイコンをビルド
         let tray_icon = TrayIconBuilder::new()
