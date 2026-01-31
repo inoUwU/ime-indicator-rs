@@ -5,6 +5,7 @@ use tray_icon::{Icon, TrayIcon, TrayIconBuilder};
 pub struct TrayManager {
     _icon: TrayIcon,
     pub quit_menu_id: MenuId,
+    pub settings_menu_id: MenuId,
 }
 
 impl TrayManager {
@@ -12,13 +13,22 @@ impl TrayManager {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         // メニューを作成
         let tray_menu = Menu::new();
+
+        // ※登録した順番でメニューに表示される
+
+        // 設定メニューのシステムトレイを設定
+        let setting_item = MenuItem::new("Settings", true, None);
+
+        let settings_menu_id = setting_item.id().clone();
+        tray_menu.append(&setting_item)?;
+
+        // 終了メニューアイテムを追加
         let quit_item = MenuItem::new("Quit", true, None);
         let quit_menu_id = quit_item.id().clone();
         tray_menu.append(&quit_item)?;
 
         // アイコンを作成
-        let icon_rgba = Self::create_icon();
-        let icon = Icon::from_rgba(icon_rgba, 32, 32)?;
+        let icon = Icon::from_path("assets/icon.ico", None).expect("Failed to load ico");
 
         // トレイアイコンをビルド
         let tray_icon = TrayIconBuilder::new()
@@ -30,32 +40,7 @@ impl TrayManager {
         Ok(TrayManager {
             _icon: tray_icon,
             quit_menu_id,
+            settings_menu_id,
         })
-    }
-
-    /// 簡単なアイコンを作成（32x32の赤い円）
-    fn create_icon() -> Vec<u8> {
-        let size = 32;
-        let mut rgba = vec![0u8; size * size * 4];
-
-        for y in 0..size {
-            for x in 0..size {
-                let dx = x as f32 - 16.0;
-                let dy = y as f32 - 16.0;
-                let distance = (dx * dx + dy * dy).sqrt();
-
-                let idx = (y * size + x) * 4;
-                if distance <= 14.0 {
-                    rgba[idx] = 255; // R
-                    rgba[idx + 1] = 100; // G
-                    rgba[idx + 2] = 100; // B
-                    rgba[idx + 3] = 255; // A
-                } else {
-                    rgba[idx + 3] = 0; // 透明
-                }
-            }
-        }
-
-        rgba
     }
 }
