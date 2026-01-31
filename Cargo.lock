@@ -5752,6 +5752,7 @@ dependencies = [
  "gpui",
  "gpui-component",
  "shared",
+ "winres",
 ]
 
 [[package]]

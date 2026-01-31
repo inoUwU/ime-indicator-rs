@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 
 /// アプリケーション設定
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct AppConfig {
     /// オーバーレイの設定
     pub overlay: OverlayConfig,
@@ -28,14 +28,6 @@ pub struct OverlayConfig {
     pub color_off: [u8; 4],
     /// 表示時間（ミリ秒）
     pub display_duration_ms: u32,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            overlay: OverlayConfig::default(),
-        }
-    }
 }
 
 impl Default for OverlayConfig {
