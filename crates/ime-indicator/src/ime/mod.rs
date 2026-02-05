@@ -7,12 +7,13 @@ use windows::{
     Win32::UI::WindowsAndMessaging::*,
 };
 
-use log::{debug, warn, error};
+use log::{debug, error, warn};
 use state::{ImeState, SharedImeState};
 
 // 安全なグローバル状態管理
 static WINDOW_HANDLE: OnceLock<isize> = OnceLock::new();
 static IME_STATE: OnceLock<SharedImeState> = OnceLock::new();
+static APP_CONFIG: OnceLock<Arc<Mutex<shared::AppConfig>>> = OnceLock::new();
 static KEYBOARD_HOOK: OnceLock<isize> = OnceLock::new();
 static EVENT_HOOK: OnceLock<isize> = OnceLock::new();
 static LAST_CHECK_TIME: OnceLock<Arc<Mutex<Instant>>> = OnceLock::new();
@@ -21,6 +22,7 @@ static IS_CHECKING: OnceLock<Arc<Mutex<bool>>> = OnceLock::new();
 const DEBOUNCE_DURATION_MS: u64 = 50;
 const IME_KEY_DEBOUNCE_MS: u64 = 20;
 pub const WM_IME_STATUS_CHANGED: u32 = WM_USER + 1;
+pub const WM_CONFIG_CHANGED: u32 = WM_USER + 2;
 const IMC_GETOPENSTATUS: u32 = 5;
 
 /// IMEマネージャーを初期化
@@ -28,6 +30,11 @@ pub fn initialize(window_handle: HWND) -> windows::core::Result<()> {
     let _ = WINDOW_HANDLE.set(window_handle.0 as isize);
     let _ = LAST_CHECK_TIME.set(Arc::new(Mutex::new(Instant::now())));
     let _ = IS_CHECKING.set(Arc::new(Mutex::new(false)));
+
+    // 設定ファイルを読み込み
+    let config = shared::load_config();
+    let _ = APP_CONFIG.set(Arc::new(Mutex::new(config)));
+    debug!("Configuration loaded successfully");
 
     let current_ime_status = get_current_ime_status();
     let _ = IME_STATE.set(Arc::new(Mutex::new(ImeState::new(current_ime_status))));
@@ -303,3 +310,21 @@ extern "system" fn win_event_proc(
         _ => {}
     }
 }
+
+/// グローバル設定を取得
+pub fn get_config() -> Option<Arc<Mutex<shared::AppConfig>>> {
+    APP_CONFIG.get().cloned()
+}
+
+/// 設定を再読み込み
+pub fn reload_config() {
+    debug!("Reloading configuration...");
+    let new_config = shared::load_config();
+    if let Some(config_lock) = APP_CONFIG.get() {
+        if let Ok(mut config) = config_lock.lock() {
+            *config = new_config;
+            debug!("Configuration reloaded successfully");
+        }
+    }
+}
+

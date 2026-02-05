@@ -8,6 +8,7 @@ mod tray;
 use log::{debug, info};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+
 fn main() -> windows::core::Result<()> {
     // ロガーを初期化
     init_logger();
@@ -41,6 +42,7 @@ fn main() -> windows::core::Result<()> {
     let result = message_loop::run(
         window_handle,
         tray_manager.quit_menu_id.clone(),
+        tray_manager.settings_menu_id.clone(),
         should_quit,
     );
 
