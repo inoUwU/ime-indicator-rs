@@ -4,6 +4,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tray_icon::menu::{MenuEvent, MenuId};
 use windows::{Win32::Foundation::*, Win32::UI::WindowsAndMessaging::*};
 
+use crate::ime;
+
 /// メッセージループを実行（トレイイベント処理付き）
 pub fn run(
     window_handle: HWND,
@@ -23,7 +25,7 @@ pub fn run(
             {
                 debug!("Settings menu item clicked");
                 // 設定GUIを別プロセスとして起動
-                launch_settings_gui();
+                launch_settings_gui(window_handle);
             }
 
             // Quitメニューがクリックされた場合、終了フラグを設定
@@ -59,7 +61,7 @@ pub fn run(
 }
 
 /// 設定GUIを起動
-fn launch_settings_gui() {
+fn launch_settings_gui(window_handle: HWND) {
     // 実行ファイルと同じディレクトリからsettings-gui.exeを探す
     let exe_path = std::env::current_exe().ok();
     let settings_exe = exe_path
@@ -69,13 +71,61 @@ fn launch_settings_gui() {
 
     if let Some(path) = settings_exe {
         debug!("Launching settings GUI: {:?}", path);
+        
+        // HWNDは Send ではないため、生のポインタに変換
+        let window_handle_raw = window_handle.0 as isize;
+        
         match std::process::Command::new(&path).spawn() {
-            Ok(_) => debug!("Settings GUI launched successfully"),
+            Ok(mut child) => {
+                debug!("Settings GUI launched successfully");
+                
+                // プロセスIDを取得
+                let pid = child.id();
+                debug!("Settings GUI process ID: {}", pid);
+                
+                // 別スレッドでプロセス終了を監視
+                std::thread::spawn(move || {
+                    // プロセスの終了を待機
+                    let _ = child.wait();
+                    debug!("Settings GUI process has terminated");
+                    
+                    // 生のポインタからHWNDを復元
+                    let window_handle = HWND(window_handle_raw as *mut _);
+                    
+                    // 設定変更通知をメインウィンドウに送信
+                    unsafe {
+                        let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                            Some(window_handle),
+                            ime::WM_CONFIG_CHANGED,
+                            WPARAM(0),
+                            LPARAM(0),
+                        );
+                    }
+                });
+            }
             Err(e) => {
                 log::error!("Failed to launch settings GUI: {}", e);
                 // フォールバック: カレントディレクトリから試す
-                if let Err(e2) = std::process::Command::new("settings-gui.exe").spawn() {
-                    log::error!("Fallback also failed: {}", e2);
+                if let Ok(mut child) = std::process::Command::new("settings-gui.exe").spawn() {
+                    debug!("Settings GUI launched from fallback path");
+                    
+                    std::thread::spawn(move || {
+                        let _ = child.wait();
+                        debug!("Settings GUI process (fallback) has terminated");
+                        
+                        let window_handle = HWND(window_handle_raw as *mut _);
+                        
+                        unsafe {
+                            let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
+                                Some(window_handle),
+                                ime::WM_CONFIG_CHANGED,
+                                WPARAM(0),
+                                LPARAM(0),
+                            );
+                        }
+                    });
+                } else {
+                    log::error!("Fallback also failed");
                 }
             }
         }

@@ -1,24 +1,105 @@
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
 use gpui::*;
+use gpui_component::alert::Alert;
+use gpui_component::label::Label;
+use gpui_component::select::{Select, SelectEvent, SelectItem, SelectState};
+use gpui_component::{Theme, ThemeRegistry};
 use gpui_component::{button::*, *};
-use shared::{AppConfig, load_config, save_config};
+use shared::{AppConfig, DisplayPosition, load_config, save_config};
+
+/// DisplayPosition のラッパー型（SelectItem トレイト実装用）
+#[derive(Clone, Debug, PartialEq)]
+struct PositionItem(DisplayPosition);
+
+impl SelectItem for PositionItem {
+    type Value = PositionItem;
+
+    fn title(&self) -> SharedString {
+        match self.0 {
+            DisplayPosition::TopLeft => "TopLeft".into(),
+            DisplayPosition::TopRight => "TopRight".into(),
+            DisplayPosition::Center => "Center".into(),
+            DisplayPosition::BottomLeft => "BottomLeft".into(),
+            DisplayPosition::BottomRight => "BottomRight".into(),
+        }
+    }
+
+    fn value(&self) -> &Self::Value {
+        self
+    }
+}
+
+/// DisplayPosition の選択肢
+fn create_position_items() -> Vec<PositionItem> {
+    vec![
+        PositionItem(DisplayPosition::TopLeft),
+        PositionItem(DisplayPosition::TopRight),
+        PositionItem(DisplayPosition::Center),
+        PositionItem(DisplayPosition::BottomLeft),
+        PositionItem(DisplayPosition::BottomRight),
+    ]
+}
+
+fn position_to_index(pos: &DisplayPosition) -> usize {
+    match pos {
+        DisplayPosition::TopLeft => 0,
+        DisplayPosition::TopRight => 1,
+        DisplayPosition::Center => 2,
+        DisplayPosition::BottomLeft => 3,
+        DisplayPosition::BottomRight => 4,
+    }
+}
 
 /// 設定画面のビューモデル
 struct SettingsView {
-    config: AppConfig,
-    // TODO: 入力フィールドを追加（gpui-component の Input API を学習後）
+    config: Arc<Mutex<AppConfig>>,
+    position_select: Entity<SelectState<Vec<PositionItem>>>,
 }
 
 impl SettingsView {
-    fn new(_window: &mut Window, _cx: &mut Context<Self>) -> Self {
+    fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        let loaded_config = load_config();
+
+        // 設定を共有状態でラップ
+        let config = Arc::new(Mutex::new(loaded_config.clone()));
+
+        // DisplayPosition の選択肢を Vec として作成
+        let items = create_position_items();
+
+        // 現在の設定値に対応するインデックスを取得
+        let selected_index = position_to_index(&loaded_config.overlay.display_pos);
+
+        let position_select =
+            cx.new(|cx| SelectState::new(items, Some(IndexPath::new(selected_index)), window, cx));
+
+        // 選択変更時のイベントを購読
+        let config_clone = Arc::clone(&config);
+        cx.subscribe_in(
+            &position_select,
+            window,
+            move |_view, _state, event, _window, _cx| {
+                if let SelectEvent::Confirm(Some(value)) = event {
+                    println!("Selected position: {:?}", value);
+                    if let Ok(mut cfg) = config_clone.lock() {
+                        cfg.overlay.display_pos = value.0.clone();
+                    }
+                }
+            },
+        )
+        .detach();
+
         Self {
-            config: load_config(),
+            config,
+            position_select,
         }
     }
 }
 
 impl Render for SettingsView {
     fn render(&mut self, _window: &mut Window, _cx: &mut Context<Self>) -> impl IntoElement {
-        let config = self.config.clone();
+        let config_clone = Arc::clone(&self.config);
 
         div()
             .v_flex()
@@ -29,7 +110,7 @@ impl Render for SettingsView {
                 div()
                     .text_xl()
                     .font_weight(FontWeight::BOLD)
-                    .child("IME Indicator Settings"),
+                    .child(Label::new("IME Indicator Settings").text_2xl()),
             )
             // 現在の設定値を表示
             .child(
@@ -39,16 +120,30 @@ impl Render for SettingsView {
                     .child(
                         div()
                             .font_weight(FontWeight::SEMIBOLD)
-                            .child("Current Settings"),
+                            .child(Label::new("Current Settings").text_xl()),
                     )
-                    .child(format!("Offset X: {}", config.overlay.offset_x))
-                    .child(format!("Offset Y: {}", config.overlay.offset_y))
-                    .child(format!("Width: {}", config.overlay.width))
-                    .child(format!("Height: {}", config.overlay.height))
-                    .child(format!(
-                        "Display Duration: {}ms",
-                        config.overlay.display_duration_ms
-                    )),
+                    .child(
+                        div()
+                            .h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(Label::new("Display Position:"))
+                            .child(Select::new(&self.position_select).w(px(150.0))),
+                    )
+                    .child(
+                        div()
+                            .h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(Label::new("Color for IME enable:")),
+                    )
+                    .child(
+                        div()
+                            .h_flex()
+                            .gap_2()
+                            .items_center()
+                            .child(Label::new("Color for IME disable:")),
+                    ),
             )
             // Buttons
             .child(
@@ -56,13 +151,15 @@ impl Render for SettingsView {
                     .h_flex()
                     .gap_2()
                     .mt_4()
-                    .child(Button::new("save").primary().label("Save (WIP)").on_click(
+                    .child(Button::new("save").primary().label("Save").on_click(
                         move |_, _window, _cx| {
-                            // TODO: 入力値から設定を保存
-                            if let Err(e) = save_config(&config) {
-                                eprintln!("Failed to save config: {}", e);
-                            } else {
-                                println!("Config saved successfully!");
+                            // 現在の設定を保存
+                            if let Ok(cfg) = config_clone.lock() {
+                                if let Err(e) = save_config(&cfg) {
+                                    eprintln!("Failed to save config: {}", e);
+                                } else {
+                                    println!("Config saved successfully: {:?}", cfg);
+                                }
                             }
                         },
                     ))
@@ -74,28 +171,39 @@ impl Render for SettingsView {
                             }),
                     ),
             )
-            // TODOメッセージ
             .child(
-                div()
-                    .mt_4()
-                    .p_2()
-                    .bg(gpui::hsla(0.15, 0.8, 0.5, 0.2))
-                    .rounded_md()
-                    .child("TODO: Input fields will be added here. Feel free to practice GPUI!"),
+                // オーバーレイ要素
+                div().absolute().top_10().left(px(10.0)).child(
+                    // TODO: オーバーレイのアニメーション表示
+                    Alert::success("success-alert", "Your operation completed successfully.")
+                        .title("Success!"),
+                ),
             )
     }
 }
 
 pub fn show() {
+    let theme_name = SharedString::from("Ayu Light");
     let app = Application::new();
 
     app.run(move |cx| {
         gpui_component::init(cx);
+        if let Err(err) = ThemeRegistry::watch_dir(
+            PathBuf::from("./crates/settings-gui/themes"),
+            cx,
+            move |cx| {
+                if let Some(theme) = ThemeRegistry::global(cx).themes().get(&theme_name).cloned() {
+                    Theme::global_mut(cx).apply_config(&theme);
+                }
+            },
+        ) {
+            eprintln!("Failed to watch themes directory: {}", err);
+        }
 
         let window_options = WindowOptions {
             window_bounds: Some(WindowBounds::Windowed(Bounds::centered(
                 None,
-                size(px(400.0), px(400.0)),
+                size(px(500.0), px(500.0)),
                 cx,
             ))),
             titlebar: Some(TitlebarOptions {
