@@ -27,6 +27,8 @@ pub fn run(
                 } else if event.id == quit_menu_id {
                     debug!("Quit menu item clicked");
                     should_quit.store(true, Ordering::SeqCst);
+                } else {
+                    debug!("Unhandled menu item clicked: {:?}", event.id);
                 }
             }
 
