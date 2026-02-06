@@ -19,21 +19,15 @@ pub fn run(
         loop {
             // ===メニューイベントをチェック===
 
-            // 設定メニューがクリックされた場合
-            if let Ok(event) = MenuEvent::receiver().try_recv()
-                && event.id == settings_menu_id
-            {
-                debug!("Settings menu item clicked");
-                // 設定GUIを別プロセスとして起動
-                launch_settings_gui(window_handle);
-            }
-
-            // Quitメニューがクリックされた場合、終了フラグを設定
-            if let Ok(event) = MenuEvent::receiver().try_recv()
-                && event.id == quit_menu_id
-            {
-                debug!("Quit menu item clicked");
-                should_quit.store(true, Ordering::SeqCst);
+            if let Ok(event) = MenuEvent::receiver().try_recv() {
+                if event.id == settings_menu_id {
+                    debug!("Settings menu item clicked");
+                    // 設定GUIを別プロセスとして起動
+                    launch_settings_gui(window_handle);
+                } else if event.id == quit_menu_id {
+                    debug!("Quit menu item clicked");
+                    should_quit.store(true, Ordering::SeqCst);
+                }
             }
 
             // ============================
@@ -71,27 +65,27 @@ fn launch_settings_gui(window_handle: HWND) {
 
     if let Some(path) = settings_exe {
         debug!("Launching settings GUI: {:?}", path);
-        
+
         // HWNDは Send ではないため、生のポインタに変換
         let window_handle_raw = window_handle.0 as isize;
-        
+
         match std::process::Command::new(&path).spawn() {
             Ok(mut child) => {
                 debug!("Settings GUI launched successfully");
-                
+
                 // プロセスIDを取得
                 let pid = child.id();
                 debug!("Settings GUI process ID: {}", pid);
-                
+
                 // 別スレッドでプロセス終了を監視
                 std::thread::spawn(move || {
                     // プロセスの終了を待機
                     let _ = child.wait();
                     debug!("Settings GUI process has terminated");
-                    
+
                     // 生のポインタからHWNDを復元
                     let window_handle = HWND(window_handle_raw as *mut _);
-                    
+
                     // 設定変更通知をメインウィンドウに送信
                     unsafe {
                         let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
@@ -108,13 +102,13 @@ fn launch_settings_gui(window_handle: HWND) {
                 // フォールバック: カレントディレクトリから試す
                 if let Ok(mut child) = std::process::Command::new("settings-gui.exe").spawn() {
                     debug!("Settings GUI launched from fallback path");
-                    
+
                     std::thread::spawn(move || {
                         let _ = child.wait();
                         debug!("Settings GUI process (fallback) has terminated");
-                        
+
                         let window_handle = HWND(window_handle_raw as *mut _);
-                        
+
                         unsafe {
                             let _ = windows::Win32::UI::WindowsAndMessaging::PostMessageW(
                                 Some(window_handle),
