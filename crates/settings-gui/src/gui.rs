@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use gpui::*;
 use gpui_component::alert::Alert;
+use gpui_component::color_picker::{ColorPicker, ColorPickerState};
 use gpui_component::label::Label;
 use gpui_component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_component::{Theme, ThemeRegistry};
@@ -56,6 +57,8 @@ fn position_to_index(pos: &DisplayPosition) -> usize {
 struct SettingsView {
     config: Arc<Mutex<AppConfig>>,
     position_select: Entity<SelectState<Vec<PositionItem>>>,
+    color_enable_select: Entity<ColorPickerState>,
+    color_disable_select: Entity<ColorPickerState>,
 }
 
 impl SettingsView {
@@ -73,6 +76,9 @@ impl SettingsView {
 
         let position_select =
             cx.new(|cx| SelectState::new(items, Some(IndexPath::new(selected_index)), window, cx));
+
+        let color_enable_select = cx.new(|cx| ColorPickerState::new(window, cx));
+        let color_disable_select = cx.new(|cx| ColorPickerState::new(window, cx));
 
         // 選択変更時のイベントを購読
         let config_clone = Arc::clone(&config);
@@ -93,6 +99,8 @@ impl SettingsView {
         Self {
             config,
             position_select,
+            color_enable_select,
+            color_disable_select,
         }
     }
 }
@@ -130,19 +138,23 @@ impl Render for SettingsView {
                             .child(Label::new("Display Position:"))
                             .child(Select::new(&self.position_select).w(px(150.0))),
                     )
+                    // TODO：色を選択する
                     .child(
                         div()
                             .h_flex()
                             .gap_2()
                             .items_center()
-                            .child(Label::new("Color for IME enable:")),
+                            .child(Label::new("Color for IME enable:"))
+                            .child(ColorPicker::new(&self.color_enable_select)),
                     )
+                    // TODO：色を選択する
                     .child(
                         div()
                             .h_flex()
                             .gap_2()
                             .items_center()
-                            .child(Label::new("Color for IME disable:")),
+                            .child(Label::new("Color for IME disable:"))
+                            .child(ColorPicker::new(&self.color_disable_select)),
                     ),
             )
             // Buttons

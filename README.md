@@ -1,3 +1,5 @@
+<img src="./assets/icon.png" alt="IME Indicator" width="100"/>
+
 # IME Indicator
 
 WindowsのIME（インプットメソッドエディタ）状態を視覚的に表示するオーバーレイインジケーターアプリケーション。

@@ -52,7 +52,7 @@ tasks:
     cmds:
       - cargo run -p {{.MAIN_CRATE}} --release
 
-  settings:
+  run:settings:
     desc: 設定GUIを実行
     aliases: [gui, s]
     cmds:
