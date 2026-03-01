@@ -10,7 +10,6 @@ path = "src/main.rs"
 
 [dependencies]
 anyhow = "1.0.100"
-easy_color = "0.1.13"
 gpui = "0.2.2"
 gpui-component = "0.5.0"
 shared = { path = "../shared" }
