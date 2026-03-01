@@ -44,6 +44,7 @@ tasks:
   # ====================
   run:
     desc: メインアプリを実行 (debug)
+    deps: [build:settings]
     cmds:
       - cargo run -p {{.MAIN_CRATE}}
 

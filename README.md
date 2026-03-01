@@ -23,6 +23,20 @@ cargo build --release
 cargo run --release
 ```
 
+デバッグ時は `Taskfile.yml` のタスク実行を推奨します。
+
+```powershell
+task run
+```
+
+`task run` は `settings-gui` を先に debug ビルドしてから `ime-indicator` を起動するため、トレイメニューから開く設定画面の反映漏れを防げます。
+
+設定GUIを単体で起動する場合：
+
+```powershell
+task run:settings
+```
+
 または、ビルド後の実行ファイルを直接起動：
 
 ```powershell
