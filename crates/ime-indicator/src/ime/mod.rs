@@ -327,4 +327,3 @@ pub fn reload_config() {
         }
     }
 }
-

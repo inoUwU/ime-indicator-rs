@@ -41,11 +41,17 @@ fn calculate_position() -> (i32, i32) {
                 }
             } else {
                 // ロック取得失敗時はデフォルト位置
-                ((screen_width - WINDOW_WIDTH) / 2, (screen_height - WINDOW_HEIGHT) / 2)
+                (
+                    (screen_width - WINDOW_WIDTH) / 2,
+                    (screen_height - WINDOW_HEIGHT) / 2,
+                )
             }
         } else {
             // 設定がない場合はデフォルト位置
-            ((screen_width - WINDOW_WIDTH) / 2, (screen_height - WINDOW_HEIGHT) / 2)
+            (
+                (screen_width - WINDOW_WIDTH) / 2,
+                (screen_height - WINDOW_HEIGHT) / 2,
+            )
         }
     }
 }
@@ -165,6 +171,8 @@ extern "system" fn wndproc(window: HWND, message: u32, wparam: WPARAM, lparam: L
                 ime::reload_config();
                 // ウィンドウ位置を更新
                 update_window_position(window);
+                // 設定画面終了後、再読込した設定でオーバーレイを即時表示
+                show_overlay(window);
                 // 設定変更後、オーバーレイを再描画して新しい色を適用
                 let _ = InvalidateRect(Some(window), None, true);
                 LRESULT(0)

@@ -106,6 +106,7 @@ pub fn load_config() -> AppConfig {
 /// 設定を保存する
 pub fn save_config(config: &AppConfig) -> Result<(), Box<dyn std::error::Error>> {
     let path = config_path();
+    println!("Saving configuration to: {:?}", path);
     let content = toml::to_string_pretty(config)?;
     fs::write(path, content)?;
     Ok(())

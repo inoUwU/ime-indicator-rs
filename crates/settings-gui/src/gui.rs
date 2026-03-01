@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 
 use gpui::*;
 use gpui_component::alert::Alert;
-use gpui_component::color_picker::{ColorPicker, ColorPickerState};
+use gpui_component::color_picker::{ColorPicker, ColorPickerEvent, ColorPickerState};
 use gpui_component::label::Label;
 use gpui_component::select::{Select, SelectEvent, SelectItem, SelectState};
 use gpui_component::{Theme, ThemeRegistry};
@@ -53,6 +53,24 @@ fn position_to_index(pos: &DisplayPosition) -> usize {
     }
 }
 
+fn f32_channel_to_u8(value: f32) -> u8 {
+    (value.clamp(0.0, 1.0) * 255.0).round() as u8
+}
+
+fn hsla_to_rgba_u8(color: Hsla) -> [u8; 4] {
+    let rgba = color.to_rgb();
+    [
+        f32_channel_to_u8(rgba.r),
+        f32_channel_to_u8(rgba.g),
+        f32_channel_to_u8(rgba.b),
+        f32_channel_to_u8(rgba.a),
+    ]
+}
+
+fn rgba_u8_to_hsla(color: [u8; 4]) -> Hsla {
+    Hsla::from(rgba(u32::from_be_bytes(color)))
+}
+
 /// 設定画面のビューモデル
 struct SettingsView {
     config: Arc<Mutex<AppConfig>>,
@@ -64,6 +82,8 @@ struct SettingsView {
 impl SettingsView {
     fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let loaded_config = load_config();
+
+        print!("Loaded configuration: {:?}", loaded_config);
 
         // 設定を共有状態でラップ
         let config = Arc::new(Mutex::new(loaded_config.clone()));
@@ -80,20 +100,50 @@ impl SettingsView {
         let color_enable_select = cx.new(|cx| ColorPickerState::new(window, cx));
         let color_disable_select = cx.new(|cx| ColorPickerState::new(window, cx));
 
+        color_enable_select.update(cx, |state, cx| {
+            state.set_value(rgba_u8_to_hsla(loaded_config.overlay.color_on), window, cx);
+        });
+        color_disable_select.update(cx, |state, cx| {
+            state.set_value(rgba_u8_to_hsla(loaded_config.overlay.color_off), window, cx);
+        });
+
         // 選択変更時のイベントを購読
-        let config_clone = Arc::clone(&config);
+        let position_config = Arc::clone(&config);
         cx.subscribe_in(
             &position_select,
             window,
             move |_view, _state, event, _window, _cx| {
-                if let SelectEvent::Confirm(Some(value)) = event {
-                    println!("Selected position: {:?}", value);
-                    if let Ok(mut cfg) = config_clone.lock() {
-                        cfg.overlay.display_pos = value.0.clone();
-                    }
+                if let SelectEvent::Confirm(Some(value)) = event
+                    && let Ok(mut cfg) = position_config.lock()
+                {
+                    cfg.overlay.display_pos = value.0.clone();
                 }
             },
         )
+        .detach();
+
+        let color_on_config = Arc::clone(&config);
+        cx.subscribe(&color_enable_select, move |_, _, ev, _| match ev {
+            ColorPickerEvent::Change(color) => {
+                if let Some(color) = color
+                    && let Ok(mut cfg) = color_on_config.lock()
+                {
+                    cfg.overlay.color_on = hsla_to_rgba_u8(*color);
+                }
+            }
+        })
+        .detach();
+
+        let color_off_config = Arc::clone(&config);
+        cx.subscribe(&color_disable_select, move |_, _, ev, _| match ev {
+            ColorPickerEvent::Change(color) => {
+                if let Some(color) = color
+                    && let Ok(mut cfg) = color_off_config.lock()
+                {
+                    cfg.overlay.color_off = hsla_to_rgba_u8(*color);
+                }
+            }
+        })
         .detach();
 
         Self {

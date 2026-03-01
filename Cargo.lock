@@ -1585,6 +1585,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 
 [[package]]
+name = "easy_color"
+version = "0.1.13"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0a2ec16030997bd7c0592b6c530bbbaaa2c3330d1abbbdce427cd175c03ca8d0"
+dependencies = [
+ "rand 0.8.5",
+]
+
+[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5749,6 +5758,7 @@ name = "settings-gui"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "easy_color",
  "gpui",
  "gpui-component",
  "shared",

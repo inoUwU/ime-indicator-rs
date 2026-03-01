@@ -6,13 +6,6 @@ members = [
   "crates/shared",
 ]
 
-# 共通の依存関係を定義 (各クレートで継承可能)
-[workspace.dependencies]
-anyhow = "1.0.100"
-log = "0.4.29"
-serde = { version = "1.0.228", features = ["derive"] }
-toml = { version = "0.9.11" }
-
 [profile.release]
 opt-level = 3
 debug = false
